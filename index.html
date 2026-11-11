@@ -84,6 +84,19 @@ button { cursor: pointer; }
 #pinform input::placeholder { letter-spacing: normal; }
 #pinform .fout { color: var(--late); font-weight: 600; }
 .pfknop { padding-top: 4px; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.punten.bonus { margin-top: 14px; }
+.bonusform { display: flex; flex-wrap: wrap; gap: 8px; }
+.bonusform select, .bonusform input { padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--bg); min-width: 0; }
+.bonusform input { flex: 1 1 14em; }
+.bonuslijst { display: flex; flex-direction: column; }
+.br { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.br:last-child { border-bottom: 0; }
+.br .bp { flex: none; min-width: 3.2em; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--surface); background: var(--c); border-radius: 999px; padding: 2px 8px; font-size: 0.88rem; }
+.br .bt { flex: 1; min-width: 0; font-size: 0.92rem; }
+.br .bt small { display: block; color: var(--muted); font-size: 0.78rem; }
+.br .bx { flex: none; border: 1.5px solid var(--line); background: transparent; border-radius: 8px; min-width: 32px; height: 32px; font-weight: 800; color: var(--muted); padding: 0 8px; }
+.br .bx.zeker { border-color: var(--late); color: var(--late); font-size: 0.8rem; }
 .ik { margin-left: auto; font-size: 0.88rem; color: var(--muted); font-weight: 600; display: inline-flex; gap: 8px; align-items: center; }
 .ik button { border: 0; background: none; color: var(--accent); font-weight: 700; padding: 2px 0; text-decoration: underline; }
 .taak.vreemd .vink { opacity: 0.4; cursor: not-allowed; }
@@ -344,7 +357,45 @@ button { cursor: pointer; }
       return '<section class="dagdeel"><header><h2>' + esc(dd.naam) + '</h2></header>' +
         (items.length ? items.map(taakRij).join('') : '<div class="leeg">' + (st.filter ? 'Geen klusjes voor ' + esc(st.filter) + '.' : 'Geen klusjes.') + '</div>') +
         '</section>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' + (st.pin ? bonusSectie(false) : '');
+  }
+
+  function extraTekst() {
+    const oud = st.data.kinderen.filter(k => k.draagkracht > 1);
+    if (!oud.length) return '';
+    const pct = Math.round((oud[0].draagkracht - 1) * 100);
+    return ' (' + oud.map(k => esc(k.naam)).join(' en ') + ' krijgen ongeveer ' + pct + '% meer)';
+  }
+
+  // ---- bonuspunten ----
+  function bonusSectie(metLijst) {
+    const d = st.data;
+    const bon = filterItems(d.bonussen || []);
+    let html = '<section class="punten bonus">';
+    if (st.pin && st.offset === 0) {
+      html += '<h2>Bonuspunten geven</h2>' +
+        '<form id="bonusform" class="bonusform">' +
+        '<label class="vh" for="bonus-kind">Kind</label>' +
+        '<select id="bonus-kind" required><option value="">Kind…</option>' +
+        d.kinderen.map(k => '<option' + (st.filter === k.naam ? ' selected' : '') + '>' + esc(k.naam) + '</option>').join('') + '</select>' +
+        '<label class="vh" for="bonus-punten">Punten</label>' +
+        '<select id="bonus-punten">' + [0.5, 1, 1.5, 2, 3, 5].map(p => '<option value="' + p + '"' + (p === 1 ? ' selected' : '') + '>+' + getal(p) + ' pt</option>').join('') + '</select>' +
+        '<label class="vh" for="bonus-tekst">Waarvoor</label>' +
+        '<input id="bonus-tekst" maxlength="80" placeholder="Waarvoor? (bijv. auto gewassen)" autocomplete="off">' +
+        '<button type="submit" class="ouderknop aan">Geef bonus</button>' +
+        '</form>';
+    } else if (bon.length || metLijst) {
+      html += '<h2>Bonuspunten</h2>';
+    }
+    if (metLijst || st.pin) {
+      html += bon.length
+        ? '<div class="bonuslijst">' + bon.slice().reverse().map(b =>
+            '<div class="br" style="--c:' + kleur(b.kind) + '"><span class="bp">+' + getal(b.punten) + '</span>' +
+            '<span class="bt"><b>' + esc(b.kind) + '</b>' + (b.omschrijving ? ' · ' + esc(b.omschrijving) : '') + '<small>' + esc(dagNaam(b.datum)) + ' ' + kort(b.datum) + '</small></span>' +
+            (st.pin ? '<button type="button" class="bx" data-bonusweg="' + esc(b.id) + '" aria-label="Bonus weghalen">×</button>' : '') + '</div>').join('') + '</div>'
+        : '<div class="leeg" style="padding:0">Nog geen bonuspunten' + (d.voorlopig ? '' : ' deze week') + '.</div>';
+    }
+    return html + '</section>';
   }
 
   function subTekst(it) {
@@ -407,20 +458,21 @@ button { cursor: pointer; }
     const sw = d.scoreWeek, stot = d.scoreTotaal;
     const max = Math.max.apply(null, d.kinderen.map(k => d.kinderen.length && sw[k.naam] ? sw[k.naam].score : 0).concat([1]));
     html += '<section class="punten" style="margin-top:14px"><h2>Puntentelling</h2>' +
-      '<p>Elke gedane klus levert 1 punt op. Is een klus niet goed of mopperend gedaan, dan gaat er ' + getal(d.aftrek) + ' punt af.</p>' +
+      '<p>Elke gedane klus levert 1 punt op. Is een klus niet goed of mopperend gedaan, dan gaat er ' + getal(d.aftrek) + ' punt af. Voor extra klusjes kunnen ouders bonuspunten geven.</p>' +
       '<div class="pr kop"><span></span><span>' + (d.voorlopig ? 'volgende week' : 'deze week') + '</span><span class="v">totaal</span></div>' +
       d.kinderen.map(k => {
-        const r = sw[k.naam] || { score: 0, gedaan: 0, matig: 0 };
+        const r = sw[k.naam] || { score: 0, gedaan: 0, matig: 0, bonus: 0 };
         const t = stot[k.naam] || { score: 0 };
-        const uitleg = r.gedaan + ' gedaan' + (r.matig ? ', ' + r.matig + '× aftrek' : '');
+        const uitleg = r.gedaan + ' gedaan' + (r.matig ? ', ' + r.matig + '× aftrek' : '') + (r.bonus ? ', +' + getal(r.bonus) + ' bonus' : '');
         return '<div class="pr" style="--c:' + kleur(k.naam) + '"><span class="n">' + esc(k.naam) + '</span>' +
           '<span class="barwrap"><span class="bar"><i style="width:' + (r.score / max * 100) + '%"></i></span><span class="uitleg">' + getal(r.score) + ' pt · ' + uitleg + '</span></span>' +
           '<span class="v tot">' + getal(t.score) + '</span></div>';
       }).join('') +
       '<p class="klein">Totaal = de laatste ' + d.wekenOnthouden + ' weken.</p>' +
-      '<details class="verdeling"><summary>Verdeling van het werk</summary><p>Zo is het werk verdeeld (stofzuigen telt hier dubbel, Julie en Bas krijgen ongeveer 1,25× zoveel): ' +
+      '<details class="verdeling"><summary>Verdeling van het werk</summary><p>Aantal klusjes in het rooster' + extraTekst() + ': ' +
       d.kinderen.map(k => esc(k.naam) + ' ' + (d.puntenWeek[k.naam] || 0)).join(' · ') + '.</p></details>' +
       '</section>';
+    html += bonusSectie(true);
     return html;
   }
 
@@ -437,6 +489,19 @@ button { cursor: pointer; }
   }
 
   document.addEventListener('submit', async e => {
+    if (e.target.id === 'bonusform') {
+      e.preventDefault();
+      const kind = $('bonus-kind').value, punten = Number($('bonus-punten').value), tekst = $('bonus-tekst').value.trim();
+      if (!kind) return meld('Kies eerst een kind');
+      const knop = e.target.querySelector('button'); knop.disabled = true;
+      try {
+        await roep('geefBonus', st.pin, kind, punten, tekst);
+        meld(kind + ' krijgt ' + getal(punten) + ' bonuspunt' + (punten === 1 ? '' : 'en'));
+        $('bonus-tekst').value = '';
+        await laad();
+      } catch (x) { meld(x.message || String(x)); knop.disabled = false; }
+      return;
+    }
     if (e.target.id !== 'pinform') return;
     e.preventDefault();
     const nieuw = {};
@@ -507,6 +572,10 @@ button { cursor: pointer; }
       }
       $('pinvak').hidden = !$('pinvak').hidden; if (!$('pinvak').hidden) $('pin').focus(); return;
     }
+    if (b.dataset.bonusweg) {
+      if (b.dataset.zeker !== '1') { b.dataset.zeker = '1'; b.textContent = 'Weghalen?'; b.classList.add('zeker'); return; }
+      return actie('verwijderBonus', [st.pin, b.dataset.bonusweg], 'Bonus weggehaald');
+    }
     if (b.id === 'afmelden') {
       st.ik = null; try { localStorage.removeItem('klusjes-ik'); } catch (x) {}
       meld('Afgemeld'); return teken();
@@ -565,7 +634,13 @@ button { cursor: pointer; }
   if (DEMO) $('demo').textContent = window.KLUSJES_DEMO_TEKST || 'Voorbeeld met nepgegevens.';
   laad();
   // elke 5 minuten verversen, zodat rode taken en afvinkingen van anderen zichtbaar worden
-  setInterval(laad, 5 * 60 * 1000);
+  setInterval(() => {
+    // niet verversen terwijl iemand een formulier invult
+    const a = document.activeElement;
+    if (a && a.closest && a.closest('form')) return;
+    if ($('bonus-tekst') && $('bonus-tekst').value) return;
+    laad();
+  }, 5 * 60 * 1000);
 })();
 </script>
 </body>
